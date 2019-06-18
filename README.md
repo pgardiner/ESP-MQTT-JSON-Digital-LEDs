@@ -1,4 +1,9 @@
-This is a modified version of https://github.com/bkpsu/ESP-MQTT-JSON-Digital-LEDs which is a modified version of https://github.com/bruhautomation/ESP-MQTT-JSON-Digital-LEDs
+This is a modified version of https://github.com/CyanLabs/ESP-MQTT-JSON-Digital-LEDs, which is a modified version of https://github.com/bkpsu/ESP-MQTT-JSON-Digital-LEDs which is a modified version of https://github.com/bruhautomation/ESP-MQTT-JSON-Digital-LEDs
+
+I added debug over telnet, and an analog toggle switch, and changed some things to match my own hardware.  Toggle switch
+sends a message to mqtt when the switch state changes, so that home assistant can take an action through an automation. In
+my case it toggles the mqtt switch set up in home assistant, which ends up sending a message back to the NodeMCU(s) to toggle
+state.
 
 The code covered in this repository utilizes [Home Assistant's MQTT Light Component](https://home-assistant.io/components/light.mqtt_json/) and an ESP8266 microcontroller. 
 

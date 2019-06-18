@@ -6,21 +6,6 @@
   |  |_)  | |  |\  \-.|  `--'  | |  |  |  |     /  _____  \ |  `--'  |     |  |     |  `--'  | |  |  |  |  /  _____  \   |  |     |  | |  `--'  | |  |\   |
   |______/  | _| `.__| \______/  |__|  |__|    /__/     \__\ \______/      |__|      \______/  |__|  |__| /__/     \__\  |__|     |__|  \______/  |__| \__|
 
-     __  __           _ _  __ _          _   _              ______   __ _    _   _ _        _    ____ ____   _   _ _____ _____ 
-    |  \/  | ___   __| (_)/ _(_) ___  __| | | |__  _   _   / ___\ \ / // \  | \ | | |      / \  | __ ) ___| | \ | | ____|_   _|
-    | |\/| |/ _ \ / _` | | |_| |/ _ \/ _` | | '_ \| | | | | |    \ V // _ \ |  \| | |     / _ \ |  _ \___ \ |  \| |  _|   | |  
-    | |  | | (_) | (_| | |  _| |  __/ (_| | | |_) | |_| | | |___  | |/ ___ \| |\  | |___ / ___ \| |_) |__) || |\  | |___  | |  
-    |_|  |_|\___/ \__,_|_|_| |_|\___|\__,_| |_.__/ \__, |  \____| |_/_/   \_\_| \_|_____/_/   \_\____/____(_)_| \_|_____| |_|  
-                                                    |___/                                                    
-  VERSION 1.0
-                                                                                                                                                    
-  This is a modified and combined version created by Fma965, it gathers many effects found around the internet including Bruhs, Bkpsu and The-Red-Team. Most of the credit goes to Bruh for the base code.
-  - https://github.com/bruhautomation/ESP-MQTT-JSON-Digital-LEDs/blob/master/ESP_MQTT_Digital_LEDs/ESP_MQTT_Digital_LEDs.ino
-  - https://github.com/bkpsu/ESP-MQTT-JSON-Digital-LEDs/blob/master/ESP_MQTT_Digital_LEDs/ESP_MQTT_Digital_LEDs_w_JSON.ino
-  - https://github.com/the-red-team/Arduino-FastLED-Music-Visualizer/blob/master/music_visualizer.ino
-
-  - You can find all information relating to this script at https://github.com/cyanlabs/ESP-MQTT-JSON-Digital-LEDs
-  
   Thanks much to @corbanmailloux for providing a great framework for implementing flash/fade with HomeAssistant https://github.com/corbanmailloux/esp-mqtt-rgb-led
   
   To use this code you will need the following dependancies: 
@@ -32,14 +17,8 @@
   - You will also need to download the follow libraries by going to Sketch -> Include Libraries -> Manage Libraries
       - FastLED 
       - PubSubClient
-      - ArduinoJSON (5.12.0)
-
-  - You will need to connect the Addressable RGB strip to Pin D3 on the NodeMCU or change the pin definition below.
-  - You can use a microphone or directly wire the output of the a speaker port on a amp to your NodeMCU, wire GND (black speaker wire) to a GND and the Possitive (usually red speaker wire) to A0 on the NodeMCU
-  - For a list of the effects that can be used check GitHub
+      - ArduinoJSON
 */
-
-#define FASTLED_INTERRUPT_RETRY_COUNT 0
 
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -48,27 +27,9 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
-/************ WIFI and MQTT Information (CHANGE THESE FOR YOUR SETUP) ******************/
-const char* ssid = "SSID"; //type your WIFI information inside the quotes
-const char* password = "WIFIPASSWORD"; //
-const char* mqtt_server = "10.0.0.2";
-const char* mqtt_username = "homeassistant";
-const char* mqtt_password = "MQTTPASSWORD";
-const int mqtt_port = 1883;
-
-
-/**************************** FOR OTA **************************************************/
-#define SENSORNAME "RGBStrip" //change this to whatever you want to call your device
-
-#define OTApassword "OTAPassword" //the password you will need to enter to upload remotely via the ArduinoIDE
-int OTAport = 8266;
-
-/************* MQTT TOPICS (change these topics as you wish)  **************************/
-const char* light_state_topic = "home/RGBStrip1";
-const char* light_set_topic = "home/RGBStrip1/set";
-const char* light_set_topic_group = "home/LEDStrip_Group1/set";
-const char* LWT_topic = "home/RGBStrip1/LWT";
+#include "RemoteDebug.h"
+#include "ESP_MQTT_Digital_LEDs.h"
+RemoteDebug Debug;
 
 const char* on_cmd = "ON";
 const char* off_cmd = "OFF";
@@ -79,14 +40,6 @@ String oldeffectString = "solid";
 /****************************************FOR JSON***************************************/
 const int BUFFER_SIZE = JSON_OBJECT_SIZE(10);
 #define MQTT_MAX_PACKET_SIZE 512
-
-/*********************************** FastLED Defintions ********************************/
-#define NUM_LEDS    64
-
-#define DATA_PIN    3
-//#define CLOCK_PIN 5
-#define CHIPSET     WS2811
-#define COLOR_ORDER BRG
 
 byte realRed = 0;
 byte realGreen = 0;
@@ -429,6 +382,9 @@ struct CRGB leds[NUM_LEDS];
 
 /********************************** START SETUP*****************************************/
 void setup() {
+    pinMode(switchPin, INPUT_PULLUP);
+    pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
+
   Serial.begin(115200);
   FastLED.addLeds<CHIPSET, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
 
@@ -442,6 +398,13 @@ void setup() {
   gPal = HeatColors_p; //for FIRE
 
   setup_wifi();
+  /* Setup Remote Debug */
+  Debug.begin(HOST_NAME,Debug.DEBUG); // Initialize the WiFi server
+  Debug.setResetCmdEnabled(true); // Enable the reset command
+  Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
+  Debug.showColors(true); // Colors
+
+  /* End setup remote debug*/
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 
@@ -531,6 +494,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   message[length] = '\0';
   Serial.println(message);
 
+  debugI("Topic:%s",topic);
+  debugI("Message:%s",message);
   if (!processJson(message)) {
     return;
   }
@@ -686,6 +651,7 @@ void sendState() {
 
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
+  debugI("sending topic %s, msg:%s",light_state_topic,buffer);
 
   client.publish(light_state_topic, buffer, true);
 }
@@ -732,8 +698,39 @@ void setColor(int inR, int inG, int inB) {
   Serial.println(inB);
 }
 
+/*********************** toggle switch ****************/
+/* If the state of the switch pin has changed, send a message to mqtt (toggle_topic), which 
+ *  is handled in homeassistant using an automation.
+ */
+int switchValue=-100;
+unsigned long lastToggleMillis;
+void readSwitchState() {
+  int newSwitchValue = digitalRead(switchPin);
+
+  if(switchValue==-100)
+    switchValue=newSwitchValue;
+  else if(newSwitchValue!=switchValue) {
+    debugI("switch fipped from %i to %i",switchValue,newSwitchValue);
+    switchValue=newSwitchValue;
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastToggleMillis >= 200) {
+      lastToggleMillis = currentMillis;
+      debugI("Sending toggle to %s, payload [%s]",toggle_topic,toggle_payload);
+      client.publish(toggle_topic,toggle_payload);
+    } else {
+      debugI("Ignoring extra toggles (too little time)");
+    }
+  }
+}
+
 /********************************** START MAIN LOOP*****************************************/
 void loop() {
+   // digitalWrite(LED_BUILTIN, LOW);   // Turn the LED on (Note that LOW is the voltage level
+// if debugging, blink internal led 
+#ifndef DEBUG_DISABLED
+  blink();
+#endif
 
   if (!client.connected()) {
     reconnect();
@@ -745,7 +742,7 @@ void loop() {
     setup_wifi();
     return;
   }
-
+  readSwitchState();
   client.loop();
 
   ArduinoOTA.handle();
@@ -1527,6 +1524,8 @@ void loop() {
       }
     }
   }
+  Debug.handle();
+
 }
 
 /**************************** START TRANSITION FADER *****************************************/
@@ -1904,4 +1903,22 @@ void RainbowFma965()
   FastLED.show(); 
 }
 
-
+/************ Blink built-in LED ***********************
+ *  blink every second when debugging to make sure program
+ *  is looping ok.
+ */
+int ledState = LOW;
+unsigned long previousMillis = 0;
+const long interval = 1000;
+void blink() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    if (ledState == LOW) {
+      ledState = HIGH;  // LED *off*
+    } else {
+      ledState = LOW;  // LED *on*
+    }
+    digitalWrite(LED_BUILTIN, ledState);
+  }
+}
